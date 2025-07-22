@@ -1,6 +1,6 @@
 {
   "name": "ad-palette-filter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Declarative WebGL2 image palette‑mapper. Add data‑palette to any <img> – done.",
   "author": "Christopher Arendt",
   "license": "MIT",
