@@ -1,0 +1,29 @@
+{
+  "name": "ad-palette-filter",
+  "version": "1.0.0",
+  "description": "Declarative WebGL2 image palette‑mapper. Add data‑palette to any <img> – done.",
+  "author": "Christopher Arendt",
+  "license": "MIT",
+  "keywords": [
+    "webgl",
+    "image‑processing",
+    "palette",
+    "filter",
+    "canvas"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "rollup": "^4.17.2"
+  },
+  "main": "index.js"
+}
