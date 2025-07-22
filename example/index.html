@@ -5,17 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Palette Filter Side‑by‑Side</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
     html, body {
       margin: 0;
-      padding: 0;
+      padding: 16px;
       width: 100%;
       background: #111;
       font-family: sans-serif;
       color: #eee;
-      box-sizing: border-box;
     }
-    body{
-      padding: 16px;
+
+    h1, .controls {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .controls select {
+      font-size: 1rem;
+      padding: 0.5rem;
+      background: #222;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 4px;
     }
 
     .cols {
@@ -35,11 +47,6 @@
       object-fit: contain;
     }
 
-    h1 {
-      text-align: center;
-      padding: 1rem 0;
-    }
-
     @media screen and (min-width: 768px) {
       .cols {
         flex-direction: row;
@@ -49,9 +56,19 @@
 </head>
 <body>
 <h1>Original vs. Filtered</h1>
+
+<div class="controls">
+  <label for="palette-select">Choose palette:</label>
+  <select id="palette-select">
+    <option value="sunset">Sunset</option>
+    <option value="noir">Noir</option>
+    <option value="firewatch">Firewatch</option>
+  </select>
+</div>
+
 <div class="cols">
-  <img src="example.png" alt="Original Image"/>
-  <img id="demo" src="example.png" data-palette="sunset" alt="Filtered Image"/>
+  <img id="orig" src="example.png" alt="Original Image" />
+  <img id="demo" src="example.png" data-palette="sunset" alt="Filtered Image" />
 </div>
 
 <script type="module" src="./main.js"></script>
