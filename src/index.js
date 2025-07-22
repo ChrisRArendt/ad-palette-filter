@@ -1,29 +1,40 @@
-// ad-palette-filter  – Public facade
 import { PaletteEngine } from './core.js';
 
-const _engine = new PaletteEngine();
+const engine = new PaletteEngine();
+let _logTiming = false;
 
 /**
- * Registers one or many palettes
- * @param {Record<string, number[]>} palettes  – {name: [r,g,b,r,g,b …]} RGB triplets 0‑255
+ * Call once at startup to configure the package.
+ * @param {{ logTiming?: boolean }} options
+ */
+export function init({ logTiming = false } = {}) {
+  _logTiming = logTiming;
+}
+
+/**
+ * Register one or more palettes.
  */
 export function registerPalettes(palettes) {
-  Object.entries(palettes).forEach(([name, arr]) => _engine.addPalette(name, arr));
+  Object.entries(palettes).forEach(([name, arr]) => engine.addPalette(name, arr));
 }
 
 /**
- * Manually apply the palette to a single <img> element.
- * (Auto‑runs on DOMContentLoaded for all data‑palette imgs.)
+ * Transform a single <img> element.
  */
 export function transform(imgEl) {
-  _engine.transform(imgEl);
+  const name = imgEl.dataset.palette;
+  const label = `[ad-palette-filter] ${name} (${imgEl.src})`;
+
+  if (_logTiming) console.time(label);
+  engine.transform(imgEl);
+  if (_logTiming) console.timeEnd(label);
 }
 
-// --- Auto bootstrap ---
+// auto‑run on DOMContentLoaded
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
     document
       .querySelectorAll('img[data-palette]')
-      .forEach(el => transform(el));
+      .forEach(transform);
   });
 }

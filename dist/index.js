@@ -110,30 +110,45 @@ function createTextureFromPixels(gl, source, width = null) {
   return gl.utils.createTextureFromPixels(source, width);
 }
 
+// src/shaders.js
+
+// Vertex shader: takes a vec2 position in clip‑space,
+// passes normalized UV coords to the fragment shader.
 const VERT_SRC = `#version 300 es
-precision mediump float;
+precision highp float;
+
 in vec2 position;
-in vec2 texCoords;
 out vec2 vUV;
 uniform float flipY;
-void main() {
-  gl_Position = vec4(position.x, position.y * flipY, 0., 1.);
-  vUV = position * .5 + .5;   // map [-1,1] → [0,1]
-}`;
 
+void main() {
+  // flipY lets us invert the Y axis when rendering to texture vs. screen
+  gl_Position = vec4(position.x, position.y * flipY, 0.0, 1.0);
+  // map from [-1,1]→[0,1] for UV lookup
+  vUV = position * 0.5 + 0.5;
+}
+`;
+
+// Fragment shader: sample the source texture (unit 0),
+// then remap its red channel through the palette texture (unit 1).
 const FRAG_SRC = `#version 300 es
-precision mediump float;
+precision highp float;
+
 in vec2 vUV;
+out vec4 fragColor;
+
 uniform sampler2D uImage;
 uniform sampler2D uColorPalette;
-out vec4 color;
-void main(){
-  vec4 src = texture(uImage, vUV);
-  // Assume palette is 1px tall; use red‑channel as lookup coord
-  color = texture(uColorPalette, vec2(src.r, 0.));
-}`;
 
-/* eslint-disable no-unused-vars */
+void main() {
+  // read source pixel
+  vec4 src = texture(uImage, vUV);
+  // look up final color from palette using the red channel as index
+  fragColor = texture(uColorPalette, vec2(src.r, 0.0));
+}
+`;
+
+// src/core.js
 
 class PaletteEngine {
   #gl;
@@ -141,96 +156,151 @@ class PaletteEngine {
   #uImage;
   #uPalette;
   #flipY;
-  #palettes = new Map();          // name → Uint8Array texture
+  #palettes = new Map();
   #canvas;
-  constructor() {
-    this.#canvas = document.createElement('canvas');
-    this.#gl = createGL(this.#canvas);
-    this.#program = this.#gl.utils.getProgram(this.#gl, VERT_SRC, FRAG_SRC);
 
-    // static uniforms
+  constructor() {
+    // SSR‑guard: only run in browser
+    if (typeof document === 'undefined') return;
+
+    this.#canvas = document.createElement('canvas');
+    this.#gl     = createGL(this.#canvas);
+
+    // Pass only the two shader strings
+    this.#program = this.#gl.utils.getProgram(VERT_SRC, FRAG_SRC);
+
+    // bind uniforms once
     this.#gl.useProgram(this.#program);
     this.#uImage   = this.#gl.getUniformLocation(this.#program, 'uImage');
     this.#uPalette = this.#gl.getUniformLocation(this.#program, 'uColorPalette');
     this.#flipY    = this.#gl.getUniformLocation(this.#program, 'flipY');
+
     this.#gl.uniform1i(this.#uImage,   0);
     this.#gl.uniform1i(this.#uPalette, 1);
-    this.#gl.uniform1f(this.#flipY, -1);
+    this.#gl.uniform1f(this.#flipY,   -1);
 
-    // full‑screen quad once
-    const quad = new Float32Array([-1,-1, 1,1, -1,1,  -1,-1, 1,1, 1,-1]);
-    const buffer = this.#gl.utils.createAndBindBuffer(this.#gl.ARRAY_BUFFER, this.#gl.STATIC_DRAW, quad);
-    linkAttr(this.#gl, this.#program, buffer, 'position');
-    linkAttr(this.#gl, this.#program, buffer, 'texCoords'); //reuse positions for texCoords
+    // Full‑screen quad: [x,y] pairs, reuse for both pos & uv
+    const quadVerts = new Float32Array([
+      -1, -1,   // bottom‑left
+      1,  1,   // top‑right
+      -1,  1,   // top‑left
+
+      -1, -1,   // bottom‑left
+      1, -1,   // bottom‑right
+      1,  1    // top‑right
+    ]);
+
+    const buf = this.#gl.utils.createAndBindBuffer(
+      this.#gl.ARRAY_BUFFER,
+      this.#gl.STATIC_DRAW,
+      quadVerts
+    );
+
+    // link the sole attribute "position" (vec2)
+    linkAttr(this.#gl, this.#program, buf, 'position');
   }
 
+  /**
+   * Registers a palette under `name`.
+   * @param {string} name
+   * @param {number[]} rgbTriplets — flat [r,g,b, …] 0–255
+   */
   addPalette(name, rgbTriplets) {
+    if (!this.#gl) return;
     const gl = this.#gl;
-    const tex = createTextureFromPixels(gl, new Uint8Array(rgbTriplets), rgbTriplets.length / 3);
+    // make Uint8Array (RGBA) by padding alpha=255
+    const rgba = new Uint8Array((rgbTriplets.length / 3) * 4);
+    for (let i = 0, j = 0; i < rgbTriplets.length; i += 3, j += 4) {
+      rgba[j + 0] = rgbTriplets[i + 0];
+      rgba[j + 1] = rgbTriplets[i + 1];
+      rgba[j + 2] = rgbTriplets[i + 2];
+      rgba[j + 3] = 255;
+    }
+    const tex = createTextureFromPixels(gl, rgba, rgba.length / 4 /*width*/);
     this.#palettes.set(name, tex);
   }
 
+  /**
+   * Applies the named palette to <img data-palette="...">,
+   * swaps its `src` to the new PNG blob.
+   */
   transform(imgEl) {
-    const paletteName = imgEl.dataset.palette;
-    if (!this.#palettes.has(paletteName)) {
-      console.warn(`[ad-palette-filter] palette "${paletteName}" not registered`);
+    if (!this.#gl) return;
+
+    const name = imgEl.dataset.palette;
+    if (!this.#palettes.has(name)) {
+      console.warn(`[ad-palette-filter] missing palette "${name}"`);
       return;
     }
 
     const gl = this.#gl;
-    // resize canvas to img
+    // resize offscreen canvas
     this.#canvas.width  = imgEl.naturalWidth;
     this.#canvas.height = imgEl.naturalHeight;
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-    // upload source img
+    // clear
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // upload source image as texture0
     const srcTex = createTextureFromPixels(gl, imgEl);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
 
-    // bind palette texture
+    // bind palette texture (texture1)
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.#palettes.get(paletteName));
+    gl.bindTexture(gl.TEXTURE_2D, this.#palettes.get(name));
 
-    // draw
+    // draw quad
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // replace <img> with <canvas> (non‑destructive clone)
+    // push result back into img
     this.#canvas.toBlob(blob => {
       const url = URL.createObjectURL(blob);
-      imgEl.src = url;          // swap pixels
+      imgEl.src = url;
     }, 'image/png');
   }
 }
 
-// ad-palette-filter  – Public facade
-
-const _engine = new PaletteEngine();
+const engine = new PaletteEngine();
+let _logTiming = false;
 
 /**
- * Registers one or many palettes
- * @param {Record<string, number[]>} palettes  – {name: [r,g,b,r,g,b …]} RGB triplets 0‑255
+ * Call once at startup to configure the package.
+ * @param {{ logTiming?: boolean }} options
+ */
+function init({ logTiming = false } = {}) {
+  _logTiming = logTiming;
+}
+
+/**
+ * Register one or more palettes.
  */
 function registerPalettes(palettes) {
-  Object.entries(palettes).forEach(([name, arr]) => _engine.addPalette(name, arr));
+  Object.entries(palettes).forEach(([name, arr]) => engine.addPalette(name, arr));
 }
 
 /**
- * Manually apply the palette to a single <img> element.
- * (Auto‑runs on DOMContentLoaded for all data‑palette imgs.)
+ * Transform a single <img> element.
  */
 function transform(imgEl) {
-  _engine.transform(imgEl);
+  const name = imgEl.dataset.palette;
+  const label = `[ad-palette-filter] ${name} (${imgEl.src})`;
+
+  if (_logTiming) console.time(label);
+  engine.transform(imgEl);
+  if (_logTiming) console.timeEnd(label);
 }
 
-// --- Auto bootstrap ---
+// auto‑run on DOMContentLoaded
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
     document
       .querySelectorAll('img[data-palette]')
-      .forEach(el => transform(el));
+      .forEach(transform);
   });
 }
 
-export { registerPalettes, transform };
+export { init, registerPalettes, transform };
 //# sourceMappingURL=index.js.map

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Palette Filter Side‑by‑Side</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      background: #111;
+      font-family: sans-serif;
+      color: #eee;
+      box-sizing: border-box;
+    }
+    body{
+      padding: 16px;
+    }
+
+    .cols {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+    }
+
+    .cols img {
+      flex: 1 1 0;
+      min-width: 0;
+      width: 100%;
+      height: auto;
+      margin: 0;
+      border: 2px solid #444;
+      object-fit: contain;
+    }
+
+    h1 {
+      text-align: center;
+      padding: 1rem 0;
+    }
+
+    @media screen and (min-width: 768px) {
+      .cols {
+        flex-direction: row;
+      }
+    }
+  </style>
+</head>
+<body>
+<h1>Original vs. Filtered</h1>
+<div class="cols">
+  <img src="example.png" alt="Original Image"/>
+  <img id="demo" src="example.png" data-palette="sunset" alt="Filtered Image"/>
+</div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>
